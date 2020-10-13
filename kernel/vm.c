@@ -269,6 +269,31 @@ uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
   return newsz;
 }
 
+
+
+// Recursively print page-table pages.
+void
+vmprint(pagetable_t pagetable)
+{
+  static int pagetable_i = 1;
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i]; 
+    if(pte & PTE_V){
+      for(int j = 1; j < pagetable_i; j++){      
+	printf(".. ",pagetable_i);
+      }
+      printf("..%d: pte %p pa %p\n",i,pagetable[i],pagetable);
+      if((pte & (PTE_R|PTE_W|PTE_X)) == 0){
+	// this PTE points to a lower-level page table.
+	pagetable_i++;
+	uint64 child = PTE2PA(pte);
+	vmprint((pagetable_t)child);
+      }
+    }
+  }
+  pagetable_i = 1;
+}
+
 // Recursively free page-table pages.
 // All leaf mappings must already have been removed.
 void
