@@ -155,7 +155,6 @@ int             uartgetc(void);
 
 // vm.c
 
-void 		vmprint(pagetable_t pagetable);
 void            kvminit(void);
 void            kvminithart(void);
 uint64          kvmpa(uint64);
