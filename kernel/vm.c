@@ -47,6 +47,65 @@ kvminit()
   kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 }
 
+/*
+ * create a kernel page table for a process.
+ */
+pagetable_t
+kernel_pagetable()
+{
+  pagetable_t pagetable = (pagetable_t) kalloc();
+  if(pagetable == 0){
+    return 0;
+  }
+  memset(kernel_pagetable, 0, PGSIZE);
+
+  // uart registers
+  if(mappages(pagetable, UART0, PGSIZE, UART0, PTE_R | PTE_W) < 0){
+    fprintf(2, "mappages() error");
+    return 0;
+  }
+
+  // virtio mmio disk interface
+  if(mappages(pagetable, VIRTIO0, PGSIZE, VIRTIO0, PTE_R | PTE_W < 0 )){
+    fprintf(2, "mappages() error");
+    return 0;
+  }
+
+  // CLINT
+  if(mappages(pagetable, CLINT, 0x10000, CLINT, PTE_R | PTE_W < 0 )){
+    fprintf(2, "mappages() error");
+    return 0;
+  }
+
+  // PLIC
+  if(mappages(pagetable,PLIC, 0x400000, PLIC,  PTE_R | PTE_W < 0 )){
+    fprintf(2, "mappages() error");
+    return 0;
+  }
+
+  // map kernel text executable and read-only.
+  if(mappages(pagetable,KERNBASE, (uint64)etext-KERNBASE, KERNBASE,  PTE_R | PTE_X < 0 )){
+    fprintf(2, "mappages() error");
+    return 0;
+  }
+
+  // map kernel data and the physical RAM we'll make use of.
+  if(mappages(pagetable, (uint64)etext, PHYSTOP-(uint64)etext, (uint64)etext, PTE_R | PTE_W < 0 )){
+    fprintf(2, "mappages() error");
+    return 0;
+  }
+
+  // map the trampoline for trap entry/exit to
+  // the highest virtual address in the kernel.
+  if(mappages(pagetable, TRAMPOLINE, PGSIZE, (uint64)trampoline, PTE_R | PTE_X < 0 )){
+    fprintf(2, "mappages() error");
+    return 0;
+  }
+
+  return pagetable;
+}
+
+
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
 void
