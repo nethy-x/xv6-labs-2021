@@ -159,6 +159,7 @@ int             uartgetc(void);
 
 // vm.c
 void            kvminit(void);
+pagetable_t     new_kernel_pagetable();
 void            kvminithart(void);
 uint64          kvmpa(uint64);
 void            kvmmap(uint64, uint64, uint64, int);
@@ -178,7 +179,11 @@ uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
-void		vmprint(pagetable_t pagetable);
+void		    vmprint(pagetable_t pagetable);
+void            kernel_freepagetable(pagetable_t pagetable,  uint64 va_kstack);
+
+//vmcopyin.c
+int             copyin_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len);
 
 // plic.c
 void            plicinit(void);

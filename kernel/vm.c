@@ -47,64 +47,98 @@ kvminit()
   kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 }
 
+
+// Recursively free page-table pages.
+// All leaf mappings must already have been removed.
+void
+freewalk(pagetable_t pagetable)
+{
+    // there are 2^9 = 512 PTEs in a page table.
+    for(int i = 0; i < 512; i++){
+        pte_t pte = pagetable[i];
+        if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+            // this PTE points to a lower-level page table.
+            uint64 child = PTE2PA(pte);
+            freewalk((pagetable_t)child);
+            pagetable[i] = 0;
+        } else if(pte & PTE_V){
+            panic("freewalk: leaf");
+        }
+    }
+    kfree((void*)pagetable);
+}
+
 /*
  * create a kernel page table for a process.
  */
 pagetable_t
-kernel_pagetable()
+new_kernel_pagetable()
 {
   pagetable_t pagetable = (pagetable_t) kalloc();
   if(pagetable == 0){
     return 0;
   }
-  memset(kernel_pagetable, 0, PGSIZE);
+  memset(pagetable, 0, PGSIZE);
 
   // uart registers
   if(mappages(pagetable, UART0, PGSIZE, UART0, PTE_R | PTE_W) < 0){
-    fprintf(2, "mappages() error");
     return 0;
   }
 
   // virtio mmio disk interface
-  if(mappages(pagetable, VIRTIO0, PGSIZE, VIRTIO0, PTE_R | PTE_W < 0 )){
-    fprintf(2, "mappages() error");
-    return 0;
+  if(mappages(pagetable, VIRTIO0, PGSIZE, VIRTIO0, PTE_R | PTE_W) < 0 ){
+
+      return 0;
   }
 
   // CLINT
-  if(mappages(pagetable, CLINT, 0x10000, CLINT, PTE_R | PTE_W < 0 )){
-    fprintf(2, "mappages() error");
-    return 0;
+  if(mappages(pagetable, CLINT, 0x10000, CLINT, PTE_R | PTE_W) < 0 ){
+
+      return 0;
   }
 
   // PLIC
-  if(mappages(pagetable,PLIC, 0x400000, PLIC,  PTE_R | PTE_W < 0 )){
-    fprintf(2, "mappages() error");
-    return 0;
+  if(mappages(pagetable,PLIC, 0x400000, PLIC,  PTE_R | PTE_W) < 0 ){
+
+      return 0;
   }
 
   // map kernel text executable and read-only.
-  if(mappages(pagetable,KERNBASE, (uint64)etext-KERNBASE, KERNBASE,  PTE_R | PTE_X < 0 )){
-    fprintf(2, "mappages() error");
-    return 0;
+  if(mappages(pagetable,KERNBASE, (uint64)etext-KERNBASE, KERNBASE,  PTE_R | PTE_X) < 0 ){
+
+      return 0;
   }
 
   // map kernel data and the physical RAM we'll make use of.
-  if(mappages(pagetable, (uint64)etext, PHYSTOP-(uint64)etext, (uint64)etext, PTE_R | PTE_W < 0 )){
-    fprintf(2, "mappages() error");
-    return 0;
+  if(mappages(pagetable, (uint64)etext, PHYSTOP-(uint64)etext, (uint64)etext, PTE_R | PTE_W) < 0){
+
+      return 0;
   }
 
   // map the trampoline for trap entry/exit to
   // the highest virtual address in the kernel.
-  if(mappages(pagetable, TRAMPOLINE, PGSIZE, (uint64)trampoline, PTE_R | PTE_X < 0 )){
-    fprintf(2, "mappages() error");
-    return 0;
+  if(mappages(pagetable, TRAMPOLINE, PGSIZE, (uint64)trampoline, PTE_R | PTE_X) < 0 ){
+
+      return 0;
   }
 
   return pagetable;
 }
+// Free a kernel's page table, and free the
+void
+kernel_freepagetable(pagetable_t pagetable,  uint64  va_kstack){
+    uvmunmap(pagetable, UART0, PGSIZE/PGSIZE, 0);
+    uvmunmap(pagetable, VIRTIO0, PGSIZE/PGSIZE, 0);
+    uvmunmap(pagetable, CLINT, 0x10000/PGSIZE, 0);
+    uvmunmap(pagetable, PLIC, 0x400000/PGSIZE, 0);
+    uvmunmap(pagetable, KERNBASE, PGROUNDUP((uint64)etext-KERNBASE)/PGSIZE, 0);
+    uvmunmap(pagetable, (uint64)etext, PGROUNDUP(PHYSTOP-(uint64)etext)/PGSIZE, 0);
+    uvmunmap(pagetable, TRAMPOLINE, PGSIZE/PGSIZE, 0);
 
+    uvmunmap(pagetable,  va_kstack, PGSIZE/PGSIZE, 0);
+
+    freewalk(pagetable);
+}
 
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
@@ -339,7 +373,7 @@ vmprint(pagetable_t pagetable)
       for(int j = 1; j < pagetable_i; j++){      
 	printf(".. ",pagetable_i);
       }
-      printf("..%d: pte %p pa %p\n",i,pagetable[i],pagetable);
+      printf("..%d: pte %p pa %p\n",i,pagetable[i],PTE2PA(pagetable[i]));
       if((pte & (PTE_R|PTE_W|PTE_X)) == 0){
 	// this PTE points to a lower-level page table.
 	pagetable_i++;
@@ -349,26 +383,6 @@ vmprint(pagetable_t pagetable)
     }
   }
   pagetable_i = 1;
-}
-
-// Recursively free page-table pages.
-// All leaf mappings must already have been removed.
-void
-freewalk(pagetable_t pagetable)
-{
-  // there are 2^9 = 512 PTEs in a page table.
-  for(int i = 0; i < 512; i++){
-    pte_t pte = pagetable[i];
-    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
-      // this PTE points to a lower-level page table.
-      uint64 child = PTE2PA(pte);
-      freewalk((pagetable_t)child);
-      pagetable[i] = 0;
-    } else if(pte & PTE_V){
-      panic("freewalk: leaf");
-    }
-  }
-  kfree((void*)pagetable);
 }
 
 // Free user memory pages,
@@ -461,6 +475,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
+//    return copyin_new(pagetable, dst, srcva, len);
   uint64 n, va0, pa0;
 
   while(len > 0){
