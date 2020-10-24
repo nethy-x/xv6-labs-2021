@@ -235,6 +235,9 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
+  if(kvmmap_fromp(p->pagetable, p->kpagetable, 0, p->sz)){
+    panic("userinit: user to kernel pgtbl error");
+  }
 
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
@@ -257,12 +260,17 @@ growproc(int n)
   struct proc *p = myproc();
 
   sz = p->sz;
+  if((sz + n) >= PGSIZE - PLIC){
+      return -1;
+  }
   if(n > 0){
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+      kvmmap_fromp(p->pagetable, p->kpagetable, p->sz - n, p->sz);
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
+    kvmmap_fromp(p->pagetable, p->kpagetable, p->sz, p->sz - n);
   }
   p->sz = sz;
   return 0;
@@ -289,7 +297,7 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
-
+  kvmmap_fromp(np->pagetable, np->kpagetable, 0, np->sz);
   np->parent = p;
 
   // copy saved user registers.
