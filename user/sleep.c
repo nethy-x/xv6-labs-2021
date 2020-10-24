@@ -8,5 +8,5 @@ int main(int argc, char *argv[]) {
     }
     int ticks = atoi(argv[1]);
     sleep(ticks);
-    exit();
+    exit(0);
 } 

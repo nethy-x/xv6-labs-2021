@@ -27,5 +27,5 @@ int main(int argc, char *argv[]) {
         fprintf(2,"error: fork failed");
     }
 
-    exit();
+    exit(0);
 } 
