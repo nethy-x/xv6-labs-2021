@@ -134,6 +134,8 @@ kernel_freepagetable(pagetable_t pagetable,  uint64  va_kstack){
     uvmunmap(pagetable, KERNBASE, PGROUNDUP((uint64)etext-KERNBASE)/PGSIZE, 0);
     uvmunmap(pagetable, (uint64)etext, PGROUNDUP(PHYSTOP-(uint64)etext)/PGSIZE, 0);
     uvmunmap(pagetable, TRAMPOLINE, PGSIZE/PGSIZE, 0);
+    uvmunmap(pagetable, TRAPFRAME, PGSIZE/PGSIZE, 0);
+
 
     uvmunmap(pagetable,  va_kstack, PGSIZE/PGSIZE, 0);
 

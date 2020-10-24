@@ -160,7 +160,6 @@ int             uartgetc(void);
 
 // vm.c
 void            kvminit(void);
-pagetable_t     new_kernel_pagetable();
 void            kvminithart(void);
 uint64          kvmpa(uint64);
 void            kvmmap(uint64, uint64, uint64, int);
@@ -181,6 +180,7 @@ int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 void		    vmprint(pagetable_t);
+pagetable_t     new_kernel_pagetable();
 void            kernel_freepagetable(pagetable_t, uint64);
 int             kvmmap_fromp(pagetable_t, pagetable_t , uint64, uint64);
 
