@@ -260,7 +260,7 @@ growproc(int n)
   struct proc *p = myproc();
 
   sz = p->sz;
-  if((sz + n) >= PGSIZE - PLIC){
+  if((sz + n) >= PLIC){
       return -1;
   }
   if(n > 0){
