@@ -127,6 +127,9 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  p->handler = (void (*)())-1;
+  p->tick_counter = 0;
+  p->alarm_in_progress = 0;
   return p;
 }
 
@@ -150,6 +153,8 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+    p->handler = (void (*)())-1;
+    p->tick_counter = 0;
 }
 
 // Create a user page table for a given process,
