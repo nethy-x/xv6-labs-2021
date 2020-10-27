@@ -34,40 +34,53 @@ trapinithart(void)
 // called from trampoline.S
 //
 void
-usertrap(void)
-{
-  int which_dev = 0;
+usertrap(void) {
+    int which_dev = 0;
 
-  if((r_sstatus() & SSTATUS_SPP) != 0)
-    panic("usertrap: not from user mode");
+    if ((r_sstatus() & SSTATUS_SPP) != 0)
+        panic("usertrap: not from user mode");
 
-  // send interrupts and exceptions to kerneltrap(),
-  // since we're now in the kernel.
-  w_stvec((uint64)kernelvec);
+    // send interrupts and exceptions to kerneltrap(),
+    // since we're now in the kernel.
+    w_stvec((uint64) kernelvec);
 
-  struct proc *p = myproc();
-  
-  // save user program counter.
-  p->trapframe->epc = r_sepc();
-  
-  if(r_scause() == 8){
-    // system call
+    struct proc *p = myproc();
 
-    if(p->killed)
-      exit(-1);
+    // save user program counter.
+    p->trapframe->epc = r_sepc();
 
-    // sepc points to the ecall instruction,
-    // but we want to return to the next instruction.
-    p->trapframe->epc += 4;
+    if (r_scause() == 8) {
+        // system call
 
-    // an interrupt will change sstatus &c registers,
-    // so don't enable until done with those registers.
-    intr_on();
+        if (p->killed)
+            exit(-1);
 
-    syscall();
-  } else if((which_dev = devintr()) != 0){
-    // ok
-  } else {
+        // sepc points to the ecall instruction,
+        // but we want to return to the next instruction.
+        p->trapframe->epc += 4;
+
+        // an interrupt will change sstatus &c registers,
+        // so don't enable until done with those registers.
+        intr_on();
+
+        syscall();
+    } else if ((which_dev = devintr()) != 0) {
+        // ok
+    } else if(r_scause() == 15){
+        uint64 va = r_stval();
+//        printf("page default %p\n",va);
+        uint64 ka = (uint64) kalloc();
+        if(ka == 0){
+            p->killed = 1;
+        }else {
+            memset((void *) ka, 0, PGSIZE);
+            va = PGROUNDDOWN(va);
+            if(mappages(p->pagetable, va, PGSIZE, ka, PTE_W|PTE_X|PTE_R|PTE_U|PTE_V) != 0){
+                kfree((void*) ka);
+                p->killed = 1;
+            }
+        }
+    }else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
