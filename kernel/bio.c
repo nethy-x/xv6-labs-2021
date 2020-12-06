@@ -26,15 +26,23 @@
 #define NBUCKETS 13
 
 struct {
-  struct spinlock lock[NBUCKETS];
   struct buf buf[NBUF];
   struct spinlock buflock;
+
 
   // Linked list of all buffers, through prev/next.
   // Sorted by how recently the buffer was used.
   // head.next is most recent, head.prev is least.
   struct buf head[NBUCKETS];
+  struct spinlock lock[NBUCKETS];
 } bcache;
+
+void
+addticks(struct buf *b){
+    acquire(&tickslock);
+    b->ticks = ticks;
+    release(&tickslock);
+}
 
 void
 binit(void)
@@ -85,6 +93,7 @@ bget(uint dev, uint blockno)
   for(b = bcache.head[bucket].next; b != &bcache.head[bucket]; b = b->next){
     if(b->dev == dev && b->blockno == blockno){
       b->refcnt++;
+      addticks(b);
       release(&bcache.lock[bucket]);
       acquiresleep(&b->lock);
       return b;
@@ -94,33 +103,85 @@ bget(uint dev, uint blockno)
   acquire(&bcache.buflock);
   // Not cached.
   // Recycle the least recently used (LRU) unused buffer.
+  // FIND LEAST USED BUFFER, CYCLE THROUGH ALL BUFFERS AND FIND A MINIMUM
+  struct buf *minimum = 0;
+  int minimum_bucket = 0;
+
   for(b = bcache.buf; b != bcache.buf + NBUF; b = b + 1){
-      int current_bucket = b->blockno % NBUCKETS;
-      if(current_bucket != bucket){
-        acquire(&bcache.lock[current_bucket]);
-      }
-//      skontroluj najdlhsie nepouzity
-    if(b->refcnt == 0) {
-      b->dev = dev;
-      b->blockno = blockno;
-      b->valid = 0;
-      b->refcnt = 1;
-      if(current_bucket != bucket){
-          move_bucket(b, bucket);
-      }
-      if(current_bucket != bucket){
-          release(&bcache.lock[current_bucket]);
-      }
-      release(&bcache.lock[bucket]);
-      release(&bcache.buflock);
-      acquiresleep(&b->lock);
-      return b;
-    }
-      if(current_bucket != bucket) {
-          release(&bcache.lock[current_bucket]);
-      }
+     int current_bucket = b->blockno % NBUCKETS;
+     if(current_bucket != bucket) {
+         acquire(&bcache.lock[current_bucket]);
+     }
+     if(b->refcnt == 0){
+         minimum = b;
+         minimum_bucket = current_bucket;
+         break;
+     }
+     if(current_bucket != bucket) {
+         release(&bcache.lock[current_bucket]);
+     }
+ }
+  if(minimum == 0){
+      panic("bget: no buffers");
   }
-  panic("bget: no buffers");
+ for(b = bcache.buf; b != bcache.buf + NBUF; b = b + 1) {
+     int current_bucket = b->blockno % NBUCKETS;
+     if((current_bucket != bucket) && (current_bucket != minimum_bucket)) {
+         acquire(&bcache.lock[current_bucket]);
+     }
+     if((b->refcnt == 0) && (b->ticks < minimum->ticks)) {
+         if((minimum_bucket != bucket) && (current_bucket != minimum_bucket)) {
+             release(&bcache.lock[minimum_bucket]);
+         }
+         minimum = b;
+         minimum_bucket = current_bucket;
+     } else {
+         if((current_bucket != bucket) && (current_bucket != minimum_bucket)) {
+             release(&bcache.lock[current_bucket]);
+         }
+     }
+ }
+ if(minimum){
+     minimum->dev = dev;
+     minimum->blockno = blockno;
+     minimum->valid = 0;
+     minimum->refcnt = 1;
+     addticks(minimum);
+     if(minimum_bucket != bucket){
+       move_bucket(minimum, bucket);
+     }
+     if(minimum_bucket != bucket) {
+         release(&bcache.lock[minimum_bucket]);
+     }
+     release(&bcache.lock[bucket]);
+     release(&bcache.buflock);
+     acquiresleep(&minimum->lock);
+
+     return minimum;
+ }else {
+     panic("bget: no buffers");
+ }
+     /*
+     if(b->refcnt == 0) {
+     b->dev = dev;
+     b->blockno = blockno;
+     b->valid = 0;
+     b->refcnt = 1;
+     if(current_bucket != bucket){
+         move_bucket(b, bucket);
+     }
+     if(current_bucket != bucket){
+         release(&bcache.lock[current_bucket]);
+     }
+     release(&bcache.lock[bucket]);
+     release(&bcache.buflock);
+     acquiresleep(&b->lock);
+     return b;
+   }
+     if(current_bucket != bucket) {
+         release(&bcache.lock[current_bucket]);
+     }*/
+
 }
 
 // Return a locked buf with the contents of the indicated block.
@@ -159,16 +220,16 @@ brelse(struct buf *b)
   int bucket = b->blockno % NBUCKETS;
   acquire(&bcache.lock[bucket]);
   b->refcnt--;
-  if (b->refcnt == 0) {
-    // no one is waiting for it.
-    b->next->prev = b->prev;
-    b->prev->next = b->next;
-    b->next = bcache.head[bucket].next;
-    b->prev = &bcache.head[bucket];
-    bcache.head[bucket].next->prev = b;
-    bcache.head[bucket].next = b;
-  }
-
+//  if (b->refcnt == 0) {
+//    // no one is waiting for it.
+//    b->next->prev = b->prev;
+//    b->prev->next = b->next;
+//    b->next = bcache.head[bucket].next;
+//    b->prev = &bcache.head[bucket];
+//    bcache.head[bucket].next->prev = b;
+//    bcache.head[bucket].next = b;
+//  }
+  addticks(b);
   release(&bcache.lock[bucket]);
 }
 
